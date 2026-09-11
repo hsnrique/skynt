@@ -1,0 +1,22 @@
+[project]
+name = "mcpgate"
+version = "0.1.0"
+description = "Policy-enforcing stdio proxy for MCP servers"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "hypothesis==6.168.0"]
+
+[project.scripts]
+mcpgate = "mcpgate.__main__:main"
+
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["mcpgate"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

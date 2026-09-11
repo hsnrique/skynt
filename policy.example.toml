@@ -1,0 +1,19 @@
+default = "deny"
+audit_log = "mcpgate-audit.jsonl"
+
+[[rules]]
+match = "read_*"
+action = "allow"
+
+[[rules]]
+match = "list_*"
+action = "allow"
+
+[[rules]]
+match = "execute_sql"
+action = "allow"
+deny_if_args_match = '(?i)\b(drop|truncate|delete|alter)\b'
+
+[[rules]]
+match = "delete_*"
+action = "confirm"
