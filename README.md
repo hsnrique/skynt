@@ -14,10 +14,10 @@ You need Python 3.11 or newer. Then:
 **1. Install**
 
 ```bash
-pipx install git+https://github.com/hsnrique/skynt@v1.1.0
+pipx install skynt
 ```
 
-Using [uv](https://docs.astral.sh/uv/)? `uv tool install git+https://github.com/hsnrique/skynt@v1.1.0` works too.
+Using [uv](https://docs.astral.sh/uv/)? `uv tool install skynt` works too. Plain `pip install skynt` also works.
 
 **2. Protect your AI apps**
 
