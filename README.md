@@ -129,3 +129,8 @@ python -m pytest
 
 The suite includes property-based tests (Hypothesis) that drive random mixes of allowed,
 denied and confirmed calls, answered in random order, through real OS pipes.
+
+## License
+
+Apache-2.0. Copyright 2026 Henrique Martins. The name "skynt" is not covered by the
+license; forks must use a different name. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
