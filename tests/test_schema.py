@@ -1,4 +1,4 @@
-from mcpgate.schema import validate_args
+from skynt.schema import validate_args
 
 SCHEMA = {
     "type": "object",

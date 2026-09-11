@@ -1,5 +1,6 @@
+# Tools no rule matches fall back to the default. deny also hides them from the agent.
 default = "deny"
-audit_log = "mcpgate-audit.jsonl"
+audit_log = "skynt-audit.jsonl"
 
 [[rules]]
 match = "read_*"
@@ -9,10 +10,15 @@ action = "allow"
 match = "list_*"
 action = "allow"
 
+# A tripwire, not a boundary: pair it with a read-only database role.
 [[rules]]
 match = "execute_sql"
 action = "allow"
-deny_if_args_match = '(?i)\b(drop|truncate|delete|alter)\b'
+deny_if_args_match = '(?i)\b(drop|truncate|delete|alter|grant)\b'
+
+[[rules]]
+match = "write_*"
+action = "confirm"
 
 [[rules]]
 match = "delete_*"
