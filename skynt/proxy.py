@@ -33,8 +33,7 @@ class Gateway:
         self._client_in, self._client_out = client_in, client_out
         self._upstream_in, self._upstream_out = upstream_in, upstream_out
         self._max_line_bytes = max_line_bytes
-        self._client_out_lock = threading.Lock()
-        self._state_lock = threading.Lock()
+        self._client_out_lock, self._state_lock = threading.Lock(), threading.Lock()
         self._schemas: dict[str, dict] = {}
         self._pending_tool_lists: set = set()
         self._confirmations = Confirmations()
@@ -112,7 +111,7 @@ class Gateway:
         if errors:
             return "schema_rejected", f"{tool}: invalid arguments: " + "; ".join(errors)
         if decision.action == "confirm" and not self._client_can_elicit:
-            return "confirm_unavailable", f"{tool}: requires human confirmation, but this client does not support MCP elicitation"
+            return "confirm_unavailable", f"{tool}: needs your confirmation, but this app cannot show confirmation prompts (MCP elicitation). Set this tool to allow or deny in your skynt policy."
         if decision.action == "confirm" and not fits_prompt(arguments):
             return "confirm_unavailable", f"{tool}: arguments too large to show the user for confirmation"
         return decision.action, decision.reason

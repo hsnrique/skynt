@@ -2,133 +2,166 @@
 
 **Your AI works freely. You stay in control.**
 
-skynt sits between any MCP client and any MCP server. The agent keeps every capability
-you grant it and nothing you don't: each tool call is checked against your policy,
-validated against the server's own schema, optionally approved by a human, and written
-to an audit log. It works with any model and any client that speaks MCP.
+AI agents don't just answer anymore. Through MCP tools they delete files, run SQL,
+send messages and deploy code. skynt sits between your AI app and those tools, so
+every action goes through your rules first: safe actions run, risky ones ask you,
+and everything is logged. It works with any model and any app that speaks MCP.
 
-Zero runtime dependencies. Python 3.11+.
+## Quick start
 
-## How it works
+You need Python 3.11 or newer. Then:
 
-```
-agent / MCP client  <-- stdio -->  skynt  <-- stdio -->  MCP server
-                                     |
-                              policy.toml  +  audit.jsonl
-```
-
-For every `tools/call`, skynt decides one of:
-
-| Decision | What happens |
-|----------|--------------|
-| `allow` | Forwarded to the server. |
-| `deny` | Answered locally with an error the model can read. The tool is also hidden from `tools/list`. |
-| `confirm` | skynt asks the human through MCP elicitation, showing the exact tool and arguments. Only an explicit approval forwards the call. |
-
-Calls are also refused when the tool was never advertised by the server, or when the
-arguments break the server's advertised input schema.
-
-## Install
+**1. Install**
 
 ```bash
-pip install .
+pipx install git+https://github.com/hsnrique/skynt@v1.1.0
 ```
 
-## Run
+Using [uv](https://docs.astral.sh/uv/)? `uv tool install git+https://github.com/hsnrique/skynt@v1.1.0` works too.
+
+**2. Protect your AI apps**
 
 ```bash
-skynt --policy policy.toml -- npx -y @modelcontextprotocol/server-filesystem@2026.8.31 ./workspace
+skynt protect
 ```
 
-In a client config such as Claude Code's `.mcp.json`, replace the server command with skynt:
+skynt finds the MCP configs of Claude Desktop, Cursor and Windsurf, plus the project configs
+of Claude Code, Cursor and VS Code in the current folder, and routes every local MCP server
+through itself. It saves a backup of each file first. Run it inside your project folder to
+cover that project too.
 
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "command": "skynt",
-      "args": ["--policy", "policy.toml", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "./workspace"]
-    }
-  }
-}
-```
+**3. Restart your AI app.** That's it.
 
-Remote (HTTP) servers go through the `mcp-remote` bridge as the upstream command:
+**4. See what your AI did**
 
 ```bash
-skynt --policy policy.toml -- npx -y mcp-remote@0.13.5 https://example.com/mcp
+skynt log
 ```
 
-Validate a policy without starting anything:
+```
+2026-09-11 11:05:07  allow               read_text_file               {"path": "hello.txt"}
+2026-09-11 11:05:07  confirm             write_file                   {"path": "note.txt", "content": "hi"}
+2026-09-11 11:05:07  confirmed           write_file                   {"path": "note.txt", "content": "hi"}
+```
+
+To undo everything: `skynt unprotect`.
+
+## What happens to each action
+
+Your rules live in `~/.skynt/policy.toml`, created on first use with the **balanced** preset:
+
+| Your AI tries to... | skynt |
+|---------------------|-------|
+| Read, list, search, create or edit | Lets it run |
+| Delete, drop, wipe, reset, revoke, kill | Asks you first |
+| Run commands or SQL, send, push, merge, deploy, publish, pay | Asks you first |
+
+Three possible decisions:
+
+- **allow** runs the action normally.
+- **confirm** shows you the exact action and its arguments, and runs it only if you approve.
+  If your app cannot show that prompt, the action is blocked and the AI is told why.
+- **deny** blocks the action and hides the tool from the AI entirely.
+
+Want every non-read action to ask you? Switch to the strict preset:
 
 ```bash
-skynt --policy policy.toml --check
+skynt init --preset strict --force
 ```
 
-## Policy
+## Change the rules
+
+Open `~/.skynt/policy.toml` in any editor. Rules are checked top to bottom and the first
+match wins. Tool names are matched ignoring case, and `*` means "anything".
 
 ```toml
-default = "deny"                  # allow | deny | confirm, for tools no rule matches
-audit_log = "skynt-audit.jsonl"
+default = "allow"                  # for tools no rule matches
 
-[[rules]]                         # first match wins; case-sensitive glob on the tool name
-match = "read_*"
-action = "allow"
+[[rules]]
+match = ["*delete*", "*drop*"]
+action = "confirm"
 
 [[rules]]
 match = "execute_sql"
 action = "allow"
-deny_if_args_match = '(?i)\b(drop|truncate|delete|alter)\b'   # regex over the JSON arguments
+deny_if_args_match = '(?i)\b(drop|truncate)\b'   # block when the arguments contain this
 
 [[rules]]
-match = "write_*"
-action = "confirm"
+match = "send_email"
+action = "deny"
 ```
 
-Unknown keys, missing actions and invalid regexes are rejected at startup, so a typo
-never silently becomes a rule.
+Check your file before restarting the app:
 
-## Audit log
-
-One JSON object per line, file created with `0600` permissions:
-
-```json
-{"ts": "2026-09-11T13:24:01+00:00", "request_id": 5, "tool": "write_file", "arguments": {"path": "a.txt"}, "decision": "confirmed", "reason": "human answer"}
+```bash
+skynt check
 ```
 
-If the audit write fails, the call is not forwarded.
+## Apps and servers
+
+- **Config files** are handled by `skynt protect`: `.mcp.json` (Claude Code), `.cursor/mcp.json`,
+  `.vscode/mcp.json`, Claude Desktop, and Windsurf. Pass a path to protect any other file:
+  `skynt protect path/to/mcp.json`.
+- **Servers added with `claude mcp add`** go through skynt like this:
+
+  ```bash
+  claude mcp add filesystem -- skynt run -- npx -y @modelcontextprotocol/server-filesystem@2026.8.31 .
+  ```
+
+- **Remote servers** (a URL instead of a command) go through the `mcp-remote` bridge:
+
+  ```bash
+  skynt run -- npx -y mcp-remote@0.13.5 https://example.com/mcp
+  ```
+
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `skynt protect [files]` | Route the MCP servers of your AI apps through skynt |
+| `skynt unprotect [files]` | Put the original configs back |
+| `skynt log [-n 30]` | Show the latest actions and decisions |
+| `skynt init [--preset balanced\|strict]` | Create the policy file |
+| `skynt check` | Validate the policy file |
+| `skynt run -- <command>` | Run one MCP server through skynt |
+
+Every command takes `--policy path/to/policy.toml` to use a different policy.
 
 ## Guarantees
 
 - **Fail closed.** Invalid JSON, JSON-RPC batches, oversized messages (4 MiB), malformed
-  tool calls and internal errors are rejected, never forwarded.
-- **No parser differentials.** The server only receives messages skynt re-serialized
-  itself, so duplicate keys or odd encodings cannot make it run something other than
-  what the policy evaluated.
-- **Unforgeable approvals.** Confirmation requests use random ids, so a server cannot
-  pre-send a look-alike question and harvest the user's answer.
-- **What you approve is what runs.** Arguments are shown in full; calls whose arguments
-  are too large to display are refused instead of truncated.
+  tool calls, audit write failures and internal errors are rejected, never forwarded.
+- **What was checked is what runs.** The server only receives messages skynt re-serialized
+  itself, so duplicate keys or odd encodings cannot smuggle a different call through.
+- **Only real tools.** Calls to tools the server never advertised are refused, and
+  arguments are validated against the server's own input schema.
+- **Honest approvals.** You see the full arguments; calls too large to display are refused
+  instead of truncated. Approval requests use random ids that a server cannot forge.
+- **Private log.** The audit file is created readable only by you, and relative log paths
+  resolve next to the policy file.
 
 ## Limits
 
-- skynt governs MCP tools only. Built-in tools of the client (a shell, a file editor)
-  bypass it; disable them in the client if you need full coverage.
-- `deny_if_args_match` is a tripwire, not a security boundary: regexes over arguments
-  can be evaded (dynamic SQL, encodings). For hard guarantees use `deny` or `confirm`,
-  and give the server least-privilege credentials.
-- Tool results are passed back unmodified. Prompt injection inside results is out of scope.
-- Schema validation covers top-level `required`, `type` and `additionalProperties`.
+- skynt covers MCP tools. Built-in tools of your app (its own shell or file editor) do not
+  go through MCP, so review those in the app's own settings.
+- `deny_if_args_match` is a tripwire, not a wall: text patterns can be worked around. For
+  hard guarantees use `confirm` or `deny`, and give servers least-privilege credentials.
+- Results coming back from tools are passed through unchanged.
+- Configs written as JSON with comments are left untouched; protect those servers with `skynt run`.
 
 ## Development
 
 ```bash
-pip install pytest==9.1.1 hypothesis==6.168.0
+pip install -e . pytest==9.1.1 hypothesis==6.168.0
 python -m pytest
 ```
 
-The suite includes property-based tests (Hypothesis) that drive random mixes of allowed,
-denied and confirmed calls, answered in random order, through real OS pipes.
+Zero runtime dependencies. The suite includes property-based tests that drive random mixes
+of allowed, denied and confirmed calls, answered in random order, through real OS pipes.
+
+## Security
+
+Found a vulnerability? Please report it privately, see [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -1,1 +1,3 @@
-"""Policy-enforcing stdio proxy for MCP servers."""
+"""Policy gateway for MCP: your AI works freely, you stay in control."""
+
+__version__ = "1.1.0"

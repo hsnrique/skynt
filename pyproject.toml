@@ -1,18 +1,32 @@
 [project]
 name = "skynt"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Policy gateway for MCP: your AI works freely, you stay in control"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Henrique Martins" }]
+readme = "README.md"
+keywords = ["mcp", "model-context-protocol", "ai-agents", "ai-governance", "llm", "security"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+]
 dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest==9.1.1", "hypothesis==6.168.0"]
 
+[project.urls]
+Homepage = "https://github.com/hsnrique/skynt"
+Issues = "https://github.com/hsnrique/skynt/issues"
+
 [project.scripts]
-skynt = "skynt.__main__:main"
+skynt = "skynt.cli:main"
 
 [build-system]
 requires = ["setuptools==84.0.0"]
@@ -20,6 +34,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["skynt"]
+
+[tool.setuptools.dynamic]
+version = { attr = "skynt.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

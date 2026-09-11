@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from skynt.policy import Policy
@@ -36,8 +38,16 @@ def test_argument_pattern_sees_unicode_unescaped():
     assert strict.decide("say", {"text": "Straße"}).action == "deny"
 
 
-def test_match_is_case_sensitive_glob():
-    assert policy().decide("READ_file", {}).action == "deny"
+def test_match_ignores_case():
+    assert policy().decide("READ_file", {}).action == "allow"
+    assert policy().decide("bulkDelete", {}).action == "deny"
+    assert Policy.from_dict({"rules": [{"match": "*delete*", "action": "confirm"}]}).decide("bulkDelete", {}).action == "confirm"
+
+
+def test_match_accepts_a_list_and_reports_the_pattern_that_hit():
+    rules = Policy.from_dict({"rules": [{"match": ["*drop*", "*wipe*"], "action": "deny"}]})
+    decision = rules.decide("wipe_disk", {})
+    assert decision.action == "deny" and "'*wipe*'" in decision.reason
 
 
 def test_visibility_hides_only_denied_tools():
@@ -51,6 +61,8 @@ def test_visibility_hides_only_denied_tools():
     {"rules": [{"match": "x"}]},
     {"rules": [{"match": "x", "acton": "allow"}]},
     {"rules": [{"action": "allow"}]},
+    {"rules": [{"match": [], "action": "allow"}]},
+    {"rules": [{"match": ["ok", 3], "action": "allow"}]},
     {"rules": [{"match": "x", "action": "allow", "deny_if_args_match": "("}]},
     {"default": "maybe"},
     {"defualt": "allow"},
@@ -64,6 +76,13 @@ def test_from_toml(tmp_path):
     path = tmp_path / "policy.toml"
     path.write_text('default = "allow"\naudit_log = "x.jsonl"\n[[rules]]\nmatch = "rm_*"\naction = "deny"\n')
     loaded = Policy.from_toml(path)
-    assert loaded.audit_log == "x.jsonl"
+    assert loaded.audit_log == str(tmp_path.resolve() / "x.jsonl")
     assert loaded.decide("rm_rf", {}).action == "deny"
     assert loaded.decide("anything", {}).action == "allow"
+
+
+def test_absolute_audit_path_is_kept(tmp_path):
+    target = (tmp_path / "logs" / "a.jsonl").as_posix()
+    path = tmp_path / "policy.toml"
+    path.write_text(f'audit_log = "{target}"\n')
+    assert Path(Policy.from_toml(path).audit_log) == Path(target)

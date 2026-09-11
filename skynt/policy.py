@@ -4,7 +4,7 @@ import fnmatch
 import json
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 ACTIONS = frozenset({"allow", "deny", "confirm"})
@@ -20,22 +20,25 @@ class Decision:
 
 @dataclass(frozen=True)
 class Rule:
-    match: str
+    patterns: tuple[str, ...]
     action: str
     deny_if_args_match: re.Pattern | None = None
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Rule":
-        _reject_unknown_keys(raw, RULE_KEYS, f"rule {raw.get('match')!r}")
-        if not isinstance(raw.get("match"), str):
-            raise ValueError(f"rule {raw!r}: 'match' must be a string")
-        action = _action(raw.get("action"), f"rule {raw['match']!r}")
-        return cls(raw["match"], action, _regex(raw.get("deny_if_args_match")))
+        where = f"rule {raw.get('match')!r}"
+        _reject_unknown_keys(raw, RULE_KEYS, where)
+        return cls(_patterns(raw.get("match"), where), _action(raw.get("action"), where), _regex(raw.get("deny_if_args_match")))
 
-    def evaluate(self, tool: str, args: dict) -> Decision:
+    def pattern_for(self, tool: str) -> str | None:
+        # Case-insensitive so one pattern covers delete_file, deleteFile and bulkDelete.
+        name = tool.casefold()
+        return next((p for p in self.patterns if fnmatch.fnmatchcase(name, p.casefold())), None)
+
+    def evaluate(self, tool: str, args: dict, pattern: str) -> Decision:
         if self.deny_if_args_match and self.deny_if_args_match.search(json.dumps(args, ensure_ascii=False)):
             return Decision("deny", f"{tool}: arguments match denied pattern")
-        return Decision(self.action, f"{tool}: rule {self.match!r} -> {self.action}")
+        return Decision(self.action, f"{tool}: rule {pattern!r} -> {self.action}")
 
 
 @dataclass(frozen=True)
@@ -46,7 +49,11 @@ class Policy:
 
     @classmethod
     def from_toml(cls, path: Path | str) -> "Policy":
-        return cls.from_dict(tomllib.loads(Path(path).read_text(encoding="utf-8")))
+        path = Path(path)
+        policy = cls.from_dict(tomllib.loads(path.read_text(encoding="utf-8")))
+        # Relative to the policy file, because MCP clients start servers from unpredictable directories.
+        audit = Path(policy.audit_log).expanduser()
+        return replace(policy, audit_log=str(audit if audit.is_absolute() else path.resolve().parent / audit))
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Policy":
@@ -57,18 +64,23 @@ class Policy:
             audit_log=str(raw.get("audit_log", cls.audit_log)),
         )
 
-    def rule_for(self, tool: str) -> Rule | None:
-        return next((rule for rule in self.rules if fnmatch.fnmatchcase(tool, rule.match)), None)
-
     def decide(self, tool: str, args: dict) -> Decision:
-        rule = self.rule_for(tool)
-        if rule is None:
-            return Decision(self.default, f"{tool}: no rule matched, default {self.default}")
-        return rule.evaluate(tool, args)
+        for rule in self.rules:
+            pattern = rule.pattern_for(tool)
+            if pattern is not None:
+                return rule.evaluate(tool, args, pattern)
+        return Decision(self.default, f"{tool}: no rule matched, default {self.default}")
 
     def visible(self, tool: str) -> bool:
-        rule = self.rule_for(tool)
+        rule = next((r for r in self.rules if r.pattern_for(tool) is not None), None)
         return (rule.action if rule else self.default) != "deny"
+
+
+def _patterns(value, where: str) -> tuple[str, ...]:
+    patterns = [value] if isinstance(value, str) else value
+    if not isinstance(patterns, list) or not patterns or not all(isinstance(p, str) and p for p in patterns):
+        raise ValueError(f"{where}: 'match' must be a pattern or a non-empty list of patterns")
+    return tuple(patterns)
 
 
 def _action(value, where: str) -> str:

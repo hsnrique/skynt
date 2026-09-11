@@ -71,7 +71,7 @@ def test_client_without_elicitation_gets_an_explanation(tmp_path):
         session.initialize(elicitation=False)
         session.list_tools()
         response = session.request(call(1, "delete_file", path="a.txt"))
-    assert "does not support MCP elicitation" in response["result"]["content"][0]["text"]
+    assert "cannot show confirmation prompts" in response["result"]["content"][0]["text"]
     assert session.upstream.calls() == []
 
 
