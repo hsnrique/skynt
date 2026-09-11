@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -41,6 +42,18 @@ def test_protect_is_idempotent(tmp_path):
     report = clients.protect_file(path, LAUNCHER)
     assert report.changed == [] and report.skipped == [("fs", "already protected")]
     assert path.read_text() == first
+
+
+def test_protect_again_moves_servers_to_a_new_installation(tmp_path):
+    path = write(tmp_path, {"mcpServers": {"fs": FILESYSTEM}})
+    clients.protect_file(path, LAUNCHER)
+    moved = clients.Launcher("/pipx/venvs/skynt/bin/python", "/home/me/.skynt/policy.toml")
+    report = clients.protect_file(path, moved)
+    assert report.changed == ["fs"]
+    assert servers(path)["fs"]["command"] == "/pipx/venvs/skynt/bin/python"
+    assert servers(path)["fs"]["args"].count("--") == 1
+    clients.unprotect_file(path)
+    assert servers(path) == {"fs": FILESYSTEM}
 
 
 def test_unprotect_restores_the_original_entries(tmp_path):
@@ -100,3 +113,25 @@ def test_unwrap_inverts_wrap(command, args, extra):
     wrapped = LAUNCHER.wrap(entry)
     assert clients.is_wrapped(wrapped)
     assert clients.unwrap(wrapped) == entry
+
+
+BASE = str(Path("/usr/local"))
+
+
+@pytest.mark.parametrize("prefix", [
+    Path("/home/me/project/.venv"),
+    Path("/home/me/envs/work"),
+])
+def test_project_venvs_are_disposable(prefix):
+    assert clients.in_disposable_venv(str(prefix), BASE)
+
+
+@pytest.mark.parametrize("prefix", [
+    Path("/usr/local"),
+    Path("/home/me/.local/share/pipx/venvs/skynt"),
+    Path("/Users/Me/.local/pipx/venvs/skynt"),
+    Path("/home/me/.local/share/uv/tools/skynt"),
+    Path("/AppData/Roaming/uv/data/tools/skynt"),
+])
+def test_system_python_and_tool_envs_are_stable(prefix):
+    assert not clients.in_disposable_venv(str(prefix), BASE)

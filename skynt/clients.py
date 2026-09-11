@@ -14,6 +14,7 @@ from pathlib import Path
 SERVER_KEYS = ("mcpServers", "servers")
 REMOTE_TYPES = frozenset({"http", "sse", "streamable-http"})
 BACKUP_SUFFIX = ".skynt-backup"
+TOOL_ENV_MARKERS = (("pipx", "venvs"), ("uv", "tools"))
 
 
 class ConfigError(Exception):
@@ -29,6 +30,18 @@ class Launcher:
         # The absolute interpreter path works even for GUI apps that do not inherit your shell PATH.
         args = ["-m", "skynt", "run", "--policy", self.policy, "--", entry["command"], *entry.get("args", [])]
         return {**entry, "command": self.python, "args": args}
+
+
+def in_disposable_venv(prefix: str, base_prefix: str) -> bool:
+    """True inside a virtualenv that pipx or uv does not manage, such as a project's .venv.
+
+    Wrapped configs point at this interpreter, so deleting that venv would
+    break every protected MCP server.
+    """
+    if Path(prefix) == Path(base_prefix):
+        return False
+    parts = {part.casefold() for part in Path(prefix).parts}
+    return not any(all(marker in parts for marker in markers) for markers in TOOL_ENV_MARKERS)
 
 
 @dataclass
@@ -67,12 +80,16 @@ def unwrap(entry: dict) -> dict:
 def protect_file(path: Path, launcher: Launcher) -> Report:
     config = _load(path)
     report = Report(path)
-    for name, entry in _servers(config).items():
-        reason = _cannot_wrap(entry)
-        if reason:
-            report.skipped.append((name, reason))
+    servers = _servers(config)
+    for name, entry in servers.items():
+        # Re-wrapping from the original lets protect pick up a new interpreter or policy path.
+        original = unwrap(entry) if isinstance(entry, dict) and is_wrapped(entry) else entry
+        reason = _cannot_wrap(original)
+        wrapped = None if reason else launcher.wrap(original)
+        if wrapped is None or wrapped == entry:
+            report.skipped.append((name, reason or "already protected"))
             continue
-        _servers(config)[name] = launcher.wrap(entry)
+        servers[name] = wrapped
         report.changed.append(name)
     _save_if_changed(path, config, report)
     return report
@@ -92,8 +109,6 @@ def unprotect_file(path: Path) -> Report:
 def _cannot_wrap(entry) -> str | None:
     if not isinstance(entry, dict):
         return "not a server entry"
-    if is_wrapped(entry):
-        return "already protected"
     if "url" in entry or entry.get("type") in REMOTE_TYPES:
         return "remote server, wrap it with mcp-remote (see README)"
     args = entry.get("args", [])

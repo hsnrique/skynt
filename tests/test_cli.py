@@ -106,3 +106,27 @@ def test_missing_server_binary_exits_cleanly(tmp_path):
 def test_no_command_shows_help(tmp_path):
     done = skynt(tmp_path)
     assert done.returncode == 2 and "protect" in done.stdout
+
+
+def test_protect_warns_when_running_from_a_project_venv(tmp_path, monkeypatch, capsys):
+    from skynt import cli
+    config = tmp_path / ".mcp.json"
+    config.write_text(json.dumps({"mcpServers": {"demo": {"command": "npx", "args": ["demo"]}}}))
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    monkeypatch.setenv("SKYNT_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(sys, "prefix", str(tmp_path / "project" / ".venv"))
+    assert cli.main(["protect", str(config)]) == 0
+    output = capsys.readouterr().out
+    assert "warning: skynt is running from a virtual environment" in output
+    assert "pipx install skynt" in output and "protected  demo" in output
+
+
+def test_protect_is_quiet_outside_a_venv(tmp_path, monkeypatch, capsys):
+    from skynt import cli
+    config = tmp_path / ".mcp.json"
+    config.write_text(json.dumps({"mcpServers": {"demo": {"command": "npx", "args": ["demo"]}}}))
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    monkeypatch.setenv("SKYNT_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(sys, "prefix", sys.base_prefix)
+    assert cli.main(["protect", str(config)]) == 0
+    assert "warning" not in capsys.readouterr().out

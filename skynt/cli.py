@@ -18,6 +18,12 @@ SHUTDOWN_GRACE_SECONDS = 5
 EXIT_FAILURE = 1
 EXIT_USAGE = 2
 EXIT_UPSTREAM_NOT_FOUND = 127
+DISPOSABLE_VENV_WARNING = """\
+skynt: warning: skynt is running from a virtual environment:
+  {prefix}
+Your AI apps will start skynt from there. If that environment is deleted, their MCP
+servers stop working. To avoid this, install skynt on its own and protect again:
+  pipx install skynt"""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,6 +46,8 @@ def cmd_protect(options) -> int:
         print(f"skynt: created policy {policy_path} (balanced preset)")
     if _load_policy(policy_path) is None or not _launcher_works():
         return EXIT_USAGE
+    if clients.in_disposable_venv(sys.prefix, sys.base_prefix):
+        print(DISPOSABLE_VENV_WARNING.format(prefix=sys.prefix))
     launcher = clients.Launcher(sys.executable, str(policy_path))
     return _apply_to_configs(options, lambda path: clients.protect_file(path, launcher), "protected")
 
