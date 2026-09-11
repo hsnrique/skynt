@@ -1,7 +1,7 @@
 [project]
 name = "skynt"
 version = "1.0.0"
-description = "Policy gateway for MCP: your AI works freely, you hold the leash"
+description = "Policy gateway for MCP: your AI works freely, you stay in control"
 requires-python = ">=3.11"
 dependencies = []
 

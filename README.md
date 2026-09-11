@@ -1,6 +1,6 @@
 # skynt
 
-**Your AI works freely. You hold the leash.**
+**Your AI works freely. You stay in control.**
 
 skynt sits between any MCP client and any MCP server. The agent keeps every capability
 you grant it and nothing you don't: each tool call is checked against your policy,
